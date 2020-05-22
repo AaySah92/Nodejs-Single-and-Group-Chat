@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Chat App</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link href="/css/bootstrap.min.css" rel="stylesheet" type="text/css">
+    <link href="/css/app.css" rel="stylesheet" type="text/css">
+    <script src="/js/jquery.min.js"></script>
+    <script src="/js/moment.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/socket.io.js"></script>
+  </head>
+  <body class="text-center">
+    <div class="container">
+      <div class="row">
+        <div class="col text-center p-0">
+          <h2 class="py-5">Welcome <%= currentUser.fullname %> <span class="float-right"><a href="/logout">Logout</a></span></h2>
+        </div>
+      </div>
+      <div class="row h-50">
+        <div class="col h-100 p-0" style="overflow-y: auto;">
+          <ul class="list-group">
+            <% for(var i=0; i < users.length; i++) { %>
+                <li class="people list-group-item
+                <% if(i === 0) { %>
+                  active
+                <% } %>"
+                data-user-id='<%= users[i].id %>'><%= users[i].fullname %></li>
+            <% } %>
+          </ul>
+        </div>
+        <div class="col-1 h-100"></div>
+        <div class="col h-100">
+          <div id="message-parent" class="row h-75" style="overflow-y: auto;">
+            <ul id="messages" class="w-100"></ul>
+          </div>
+          <div class="row h-25" style="border-top: 1px solid #eee;">
+            <form class="position-absolute chat-form">
+              <div class="form-row">
+                <div class="col-10">
+                  <input class="form-control chat-text" id="chat-text" autofocus="on" placeholder="type your message here..." />
+                </div>
+                <div class="col-2">
+                  <button class="btn btn-primary btn-block">Send</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+  <script>
+
+    var currentUser = <%- JSON.stringify(currentUser) %>;
+    var groupChatId = parseInt(<%- groupChatId %>);
+
+    /* initialize socket */
+    var socket = io.connect('http://localhost:9999');
+
+    /* send fullname */
+    socket.emit('setNameAndId', { fullname: currentUser.fullname, userId: currentUser.id });
+
+    $(document).ready(function(){
+      var getHistory = function() {
+        var receiver = $("li.people.active");
+        var receiverId = receiver.attr("data-user-id");
+
+        $.get("/getmessages/" + receiverId, function(messages) {
+          messages.forEach(function(message) {
+            message.timestamp = moment(message.timestamp.replace(/-/g,"/")).utc().format('YYYY-MM-DD h:m:s a');
+            var timestampLabel = $("<label class='timestamp'>").html(message.timestamp);
+            var msgLabel = $("<label class='msg'>").html(message.message);
+            $("#messages").append($("<li>").append(msgLabel).append(timestampLabel));
+          });
+          $("#message-parent").scrollTop($("#message-parent")[0].scrollHeight);
+        });
+      };
+
+      $("li.people").on("click", function(e) {
+        $("li.people").removeClass("active");
+        $(this).addClass("active");
+        $("#messages").html("");
+        getHistory();
+      });
+
+      $("form").submit(function(e){
+        e.preventDefault();
+
+        /* raising event */
+        socket.emit("chat_message", {
+          message: $("#chat-text").val(),
+          receiverId: parseInt($("li.people.active").attr("data-user-id")),
+          senderId: parseInt(currentUser.id)
+        });
+
+        $('#chat-text').val('');
+        return false;
+      });
+
+      /* listening events */
+      socket.on("chat_message", function(message){
+        if(
+          (message.senderId === parseInt($("li.people.active").attr("data-user-id")) && message.receiverId === parseInt(currentUser.id))
+          || (message.senderId === parseInt(currentUser.id) && message.receiverId === parseInt($("li.people.active").attr("data-user-id")))
+          || (message.receiverId === groupChatId && parseInt($("li.people.active").attr("data-user-id")) === groupChatId)
+        ) {
+          var timestampLabel = $("<label class='timestamp'>").html(moment().utc().format('YYYY-MM-DD h:m:s a'));
+          var msgLabel = $("<label class='msg'>").html(message.message);
+          $("#messages").append($("<li>").append(msgLabel).append(timestampLabel));
+          $("#message-parent").scrollTop($("#message-parent")[0].scrollHeight);
+        }
+      });
+
+      /* get history first time */
+      getHistory();
+    });
+  </script>
+</html>
